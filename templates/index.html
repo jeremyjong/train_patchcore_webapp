@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - PatchCore Training{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="card-title">🎯 Dashboard</h1>
+    <p style="color: #666; margin-bottom: 2rem;">
+        Welcome to the PatchCore Training Web Application. This tool helps you train and test anomaly detection models using Anomalib 0.7.0.
+    </p>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="configCount">0</div>
+            <div class="stat-label">Configurations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="modelCount">0</div>
+            <div class="stat-label">Trained Models</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="trainingStatus">Idle</div>
+            <div class="stat-label">Training Status</div>
+        </div>
+    </div>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <h2 class="card-title">🗂️ Dataset Management</h2>
+        <p style="color: #666; margin-bottom: 1rem;">
+            Upload or select your dataset following the MVTec AD format. Validate the structure and view statistics.
+        </p>
+        <a href="{{ url_for('dataset_page') }}" class="btn btn-primary">Manage Datasets</a>
+    </div>
+    
+    <div class="card">
+        <h2 class="card-title">⚙️ Configuration</h2>
+        <p style="color: #666; margin-bottom: 1rem;">
+            Generate training configuration files with custom parameters for your PatchCore models.
+        </p>
+        <a href="{{ url_for('config_page') }}" class="btn btn-primary">Create Config</a>
+    </div>
+    
+    <div class="card">
+        <h2 class="card-title">🚀 Training</h2>
+        <p style="color: #666; margin-bottom: 1rem;">
+            Train PatchCore models with your datasets. Monitor progress and view real-time logs.
+        </p>
+        <a href="{{ url_for('train_page') }}" class="btn btn-primary">Start Training</a>
+    </div>
+    
+    <div class="card">
+        <h2 class="card-title">🔍 Inference</h2>
+        <p style="color: #666; margin-bottom: 1rem;">
+            Test your trained models on new images. Get anomaly scores and predictions.
+        </p>
+        <a href="{{ url_for('inference_page') }}" class="btn btn-primary">Run Inference</a>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📋 Quick Start Guide</h2>
+    <ol style="line-height: 2; color: #666;">
+        <li><strong>Prepare Dataset:</strong> Organize your data in MVTec AD format (category/train/good, category/test/defect_type)</li>
+        <li><strong>Validate Dataset:</strong> Use the Dataset page to validate your data structure</li>
+        <li><strong>Generate Config:</strong> Create a configuration file with your training parameters</li>
+        <li><strong>Train Model:</strong> Start training and monitor the progress in real-time</li>
+        <li><strong>Run Inference:</strong> Test your trained model on new images</li>
+    </ol>
+</div>
+
+<div class="card">
+    <h2 class="card-title">ℹ️ System Information</h2>
+    <table style="width: 100%; color: #666;">
+        <tr>
+            <td style="padding: 0.5rem;"><strong>Anomalib Version:</strong></td>
+            <td style="padding: 0.5rem;">0.7.0 (Legacy API)</td>
+        </tr>
+        <tr>
+            <td style="padding: 0.5rem;"><strong>Model:</strong></td>
+            <td style="padding: 0.5rem;">PatchCore</td>
+        </tr>
+        <tr>
+            <td style="padding: 0.5rem;"><strong>Supported Backbones:</strong></td>
+            <td style="padding: 0.5rem;">Wide ResNet-50, ResNet-18, ResNet-50</td>
+        </tr>
+        <tr>
+            <td style="padding: 0.5rem;"><strong>Task Type:</strong></td>
+            <td style="padding: 0.5rem;">Anomaly Segmentation</td>
+        </tr>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Update dashboard stats
+    function updateStats() {
+        fetch('/api/list_configs')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('configCount').textContent = data.configs.length;
+                }
+            });
+        
+        fetch('/api/list_models')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('modelCount').textContent = data.models.length;
+                }
+            });
+        
+        fetch('/api/training_status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const status = data.state.is_training ? 'Training...' : 'Idle';
+                    document.getElementById('trainingStatus').textContent = status;
+                }
+            });
+    }
+    
+    // Update stats on page load
+    updateStats();
+    
+    // Refresh stats every 5 seconds
+    setInterval(updateStats, 5000);
+</script>
+{% endblock %}

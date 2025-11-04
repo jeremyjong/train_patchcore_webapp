@@ -1,0 +1,849 @@
+{% extends "base.html" %}
+
+{% block title %}Inference - PatchCore Training{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="card-title">🔍 Model Inference</h1>
+    
+    <div id="alertContainer"></div>
+    
+    <!-- Tabs for single/batch inference -->
+    <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; border-bottom: 2px solid #e0e0e0;">
+        <button class="tab-btn active" onclick="switchTab('single')" id="singleTab">
+            📷 Single Image
+        </button>
+        <button class="tab-btn" onclick="switchTab('batch')" id="batchTab">
+            📊 Batch Analysis (with Histogram)
+        </button>
+    </div>
+    
+    <!-- Single Image Inference -->
+    <div id="singleInferenceSection">
+        <div class="form-group">
+            <label class="form-label">Select Trained Model</label>
+            <select class="form-control" id="modelSelect">
+                <option value="">-- Select a model --</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Upload Test Image</label>
+            <input type="file" class="form-control" id="imageInput" accept="image/*" onchange="previewImage(event)">
+        </div>
+        
+        <div id="imagePreview" style="display: none; margin: 1rem 0;">
+            <img id="previewImg" style="max-width: 100%; max-height: 400px; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        </div>
+        
+        <!-- Inference Settings -->
+        <div class="card" style="margin: 1rem 0; padding: 1rem; background: #f8f9fa;">
+            <h3 style="margin-bottom: 1rem; font-size: 1.2rem;">⚙️ Inference Settings</h3>
+            
+            <!-- Info about OpenVINO -->
+            <div style="padding: 0.75rem; background: #e3f2fd; border-left: 4px solid #2196f3; border-radius: 4px; margin-bottom: 1.5rem;">
+                <strong>⚡ OpenVINO Acceleration Enabled</strong>
+                <div style="font-size: 0.9rem; color: #666; margin-top: 0.25rem;">
+                    Models are automatically optimized for fast CPU inference (2-5x speedup)
+                </div>
+            </div>
+            
+            <!-- Threshold Controls -->
+            <div class="form-group">
+                <div style="display: flex; align-items: center; margin-bottom: 1rem;">
+                    <input type="checkbox" id="useAdaptiveThreshold" checked style="margin-right: 0.5rem;">
+                    <label for="useAdaptiveThreshold" style="margin: 0; cursor: pointer;">
+                        <strong>Use Adaptive Threshold (Recommended)</strong>
+                    </label>
+                </div>
+                
+                <div id="manualThresholdSection" style="display: none;">
+                    <label class="form-label">Manual Threshold Value</label>
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <input type="range" id="thresholdSlider" class="form-control" 
+                               min="0" max="1" step="0.01" value="0.5" 
+                               style="flex: 1;" oninput="updateThresholdValue()">
+                        <input type="number" id="thresholdValue" class="form-control" 
+                               min="0" max="1" step="0.01" value="0.5" 
+                               style="width: 100px;" onchange="updateThresholdSlider()">
+                    </div>
+                    <small style="color: #666; display: block; margin-top: 0.5rem;">
+                        Lower values = more sensitive (more likely to detect anomalies)<br>
+                        Higher values = less sensitive (fewer false positives)
+                    </small>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div style="display: flex; align-items: center;">
+                    <input type="checkbox" id="showHeatmap" checked style="margin-right: 0.5rem;">
+                    <label for="showHeatmap" style="margin: 0; cursor: pointer;">
+                        Show Anomaly Heatmap
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <button class="btn btn-primary" onclick="runInference()" id="inferenceBtn">
+            Run Inference
+        </button>
+    </div>
+    
+    <!-- Batch Inference Section -->
+    <div id="batchInferenceSection" style="display: none;">
+        <div style="padding: 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-bottom: 1.5rem;">
+            <strong>💡 Pro Tip:</strong> Upload both normal and abnormal images to see how well your model separates them and determine the optimal threshold.
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Select Trained Model</label>
+            <select class="form-control" id="batchModelSelect">
+                <option value="">-- Select a model --</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">📘 Upload Normal Images (Expected to be Normal)</label>
+            <input type="file" class="form-control" id="normalImageInput" accept="image/*" multiple>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">
+                Select multiple normal/good images (Ctrl/Cmd + Click)
+            </small>
+        </div>
+        
+        <div id="normalFileCount" style="margin: 0.5rem 0; padding: 0.75rem; background: #e3f2fd; border-radius: 5px; display: none;">
+            <strong>✓ Normal images selected:</strong> <span id="normalCountText">0</span>
+        </div>
+        
+        <div class="form-group" style="margin-top: 1.5rem;">
+            <label class="form-label">📕 Upload Abnormal Images (Expected to be Anomalies)</label>
+            <input type="file" class="form-control" id="abnormalImageInput" accept="image/*" multiple>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">
+                Select multiple abnormal/defect images (Ctrl/Cmd + Click) - Optional
+            </small>
+        </div>
+        
+        <div id="abnormalFileCount" style="margin: 0.5rem 0; padding: 0.75rem; background: #ffebee; border-radius: 5px; display: none;">
+            <strong>✓ Abnormal images selected:</strong> <span id="abnormalCountText">0</span>
+        </div>
+        
+        <div id="batchTotalCount" style="margin: 1rem 0; padding: 1rem; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 5px; display: none;">
+            <strong>Total images to analyze:</strong> <span id="totalCountText">0</span>
+        </div>
+        
+        <button class="btn btn-primary" onclick="runBatchInference()" id="batchInferenceBtn">
+            Analyze Batch
+        </button>
+    </div>
+</div>
+
+<!-- Single Image Results -->
+<div id="resultsContainer" style="display: none;">
+    <div class="card">
+        <h2 class="card-title">📊 Inference Results</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="anomalyScore">0.00</div>
+                <div class="stat-label">Anomaly Score</div>
+            </div>
+            <div class="stat-card" id="predictionCard">
+                <div class="stat-value" id="prediction">Normal</div>
+                <div class="stat-label">Prediction</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="thresholdUsed">0.00</div>
+                <div class="stat-label">Threshold Used</div>
+            </div>
+        </div>
+        
+        <!-- Visualization Section -->
+        <div id="visualizationSection" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Visualization</h3>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                <div>
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem; color: #666;">Original Image</h4>
+                    <img id="originalImage" style="width: 100%; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                </div>
+                <div id="heatmapContainer" style="display: none;">
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem; color: #666;">Anomaly Heatmap</h4>
+                    <img id="heatmapImage" style="width: 100%; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 5px; font-size: 0.9rem;">
+                        <strong>Heatmap Legend:</strong><br>
+                        🔵 Blue/Green = Normal regions<br>
+                        🟡 Yellow/Orange = Mild anomalies<br>
+                        🔴 Red = Strong anomalies
+                    </div>
+                </div>
+                <div id="overlayContainer" style="display: none;">
+                    <h4 style="font-size: 1rem; margin-bottom: 0.5rem; color: #666;">Overlay (Original + Heatmap)</h4>
+                    <img id="overlayImage" style="width: 100%; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Interpretation</h3>
+            <p id="interpretation" style="color: #666; line-height: 1.8;"></p>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Results -->
+<div id="batchResultsContainer" style="display: none;">
+    <div class="card">
+        <h2 class="card-title">📊 Batch Analysis Results</h2>
+        
+        <!-- Statistics -->
+        <div id="batchStats" style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Statistics</h3>
+            <div class="stats-grid" id="statsGrid"></div>
+        </div>
+        
+        <!-- Histogram -->
+        <div id="histogramSection" style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Anomaly Score Distribution</h3>
+            <img id="histogramImage" style="width: 100%; max-width: 1000px; border-radius: 5px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+            
+            <div style="margin-top: 1.5rem; padding: 1rem; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 5px;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #2e7d32;">💡 How to Use This Histogram:</h4>
+                <ul style="margin: 0; padding-left: 1.5rem; color: #555;">
+                    <li>The histogram shows the distribution of anomaly scores across all your images</li>
+                    <li><strong>Blue bars</strong> = Normal scores (below typical threshold)</li>
+                    <li><strong>Red bars</strong> = Anomaly scores (above typical threshold)</li>
+                    <li><strong>Red dashed line</strong> = Typical threshold (0.5)</li>
+                    <li><strong>Green line</strong> = Mean score of your dataset</li>
+                    <li><strong>Orange line</strong> = Median score of your dataset</li>
+                    <li>Use the <strong>suggested threshold</strong> below for optimal separation between normal and anomaly classes</li>
+                </ul>
+            </div>
+            
+            <div id="thresholdSuggestion" style="margin-top: 1rem; padding: 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 5px;">
+            </div>
+        </div>
+        
+        <!-- Detailed Results Table -->
+        <div id="detailedResults">
+            <h3 style="margin-bottom: 1rem; color: #333;">Detailed Results</h3>
+            <div id="resultsTable"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📋 Available Models</h2>
+    <div id="modelList">
+        <div class="loader"></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">ℹ️ Inference Guide</h2>
+    <div style="color: #666; line-height: 2;">
+        <h3 style="margin: 1rem 0 0.5rem 0; color: #333;">How to Use:</h3>
+        <ol style="padding-left: 1.5rem;">
+            <li>Select a trained model from the dropdown</li>
+            <li>Upload an image you want to test</li>
+            <li>Adjust threshold settings if needed</li>
+            <li>Click "Run Inference" to get results</li>
+        </ol>
+        
+        <h3 style="margin: 1.5rem 0 0.5rem 0; color: #333;">⚡ OpenVINO Acceleration:</h3>
+        <ul style="padding-left: 1.5rem;">
+            <li><strong>Automatic Optimization:</strong> Models are automatically converted to OpenVINO format for faster inference</li>
+            <li><strong>First Run:</strong> Initial inference takes ~60-90 seconds (one-time model conversion)</li>
+            <li><strong>Subsequent Runs:</strong> 2-4 seconds per image (2-5x faster than standard inference)</li>
+            <li><strong>Cached Models:</strong> Converted models are saved and reused automatically</li>
+        </ul>
+        
+        <h3 style="margin: 1.5rem 0 0.5rem 0; color: #333;">Understanding Results:</h3>
+        <ul style="padding-left: 1.5rem;">
+            <li><strong>Anomaly Score:</strong> Higher scores indicate more anomalous regions (typically 0-1 range)</li>
+            <li><strong>Prediction:</strong> Classification as "Normal" or "Anomaly" based on threshold</li>
+            <li><strong>Adaptive Threshold:</strong> Uses the optimal threshold determined during training</li>
+            <li><strong>Manual Threshold:</strong> Adjust sensitivity by setting your own threshold value</li>
+        </ul>
+        
+        <h3 style="margin: 1.5rem 0 0.5rem 0; color: #333;">Threshold Guidelines:</h3>
+        <ul style="padding-left: 1.5rem;">
+            <li><strong>0.1-0.3:</strong> Very sensitive - catches most anomalies, more false positives</li>
+            <li><strong>0.4-0.6:</strong> Balanced - good for most use cases</li>
+            <li><strong>0.7-0.9:</strong> Conservative - only clear anomalies, fewer false alarms</li>
+        </ul>
+        
+        <h3 style="margin: 1.5rem 0 0.5rem 0; color: #333;">Best Practices:</h3>
+        <ul style="padding-left: 1.5rem;">
+            <li>Use images similar in size and format to your training data</li>
+            <li>Ensure proper lighting and image quality</li>
+            <li>Start with adaptive threshold, then adjust manually if needed</li>
+            <li>Test multiple images to understand model behavior</li>
+            <li>Compare results against ground truth when available</li>
+        </ul>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .tab-btn {
+        padding: 0.75rem 1.5rem;
+        background: none;
+        border: none;
+        border-bottom: 3px solid transparent;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 500;
+        color: #666;
+        transition: all 0.3s ease;
+    }
+    
+    .tab-btn:hover {
+        color: #333;
+        background: #f5f5f5;
+    }
+    
+    .tab-btn.active {
+        color: #4facfe;
+        border-bottom-color: #4facfe;
+    }
+</style>
+
+<script>
+    function showAlert(message, type) {
+        const alertContainer = document.getElementById('alertContainer');
+        const alertClass = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+        alertContainer.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+        setTimeout(() => {
+            alertContainer.innerHTML = '';
+        }, 5000);
+    }
+    
+    function switchTab(tab) {
+        const singleTab = document.getElementById('singleTab');
+        const batchTab = document.getElementById('batchTab');
+        const singleSection = document.getElementById('singleInferenceSection');
+        const batchSection = document.getElementById('batchInferenceSection');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const batchResultsContainer = document.getElementById('batchResultsContainer');
+        
+        if (tab === 'single') {
+            singleTab.classList.add('active');
+            batchTab.classList.remove('active');
+            singleSection.style.display = 'block';
+            batchSection.style.display = 'none';
+            resultsContainer.style.display = 'none';
+            batchResultsContainer.style.display = 'none';
+        } else {
+            singleTab.classList.remove('active');
+            batchTab.classList.add('active');
+            singleSection.style.display = 'none';
+            batchSection.style.display = 'block';
+            resultsContainer.style.display = 'none';
+            batchResultsContainer.style.display = 'none';
+        }
+    }
+    
+    // Show file count for batch upload
+    document.addEventListener('DOMContentLoaded', function() {
+        const normalInput = document.getElementById('normalImageInput');
+        const abnormalInput = document.getElementById('abnormalImageInput');
+        
+        if (normalInput) {
+            normalInput.addEventListener('change', function(e) {
+                const fileCount = e.target.files.length;
+                const countDiv = document.getElementById('normalFileCount');
+                const countText = document.getElementById('normalCountText');
+                
+                if (fileCount > 0) {
+                    countText.textContent = fileCount;
+                    countDiv.style.display = 'block';
+                } else {
+                    countDiv.style.display = 'none';
+                }
+                updateTotalCount();
+            });
+        }
+        
+        if (abnormalInput) {
+            abnormalInput.addEventListener('change', function(e) {
+                const fileCount = e.target.files.length;
+                const countDiv = document.getElementById('abnormalFileCount');
+                const countText = document.getElementById('abnormalCountText');
+                
+                if (fileCount > 0) {
+                    countText.textContent = fileCount;
+                    countDiv.style.display = 'block';
+                } else {
+                    countDiv.style.display = 'none';
+                }
+                updateTotalCount();
+            });
+        }
+    });
+    
+    function updateTotalCount() {
+        const normalInput = document.getElementById('normalImageInput');
+        const abnormalInput = document.getElementById('abnormalImageInput');
+        const totalDiv = document.getElementById('batchTotalCount');
+        const totalText = document.getElementById('totalCountText');
+        
+        const normalCount = normalInput ? normalInput.files.length : 0;
+        const abnormalCount = abnormalInput ? abnormalInput.files.length : 0;
+        const total = normalCount + abnormalCount;
+        
+        if (total > 0) {
+            totalText.textContent = `${total} (${normalCount} normal + ${abnormalCount} abnormal)`;
+            totalDiv.style.display = 'block';
+        } else {
+            totalDiv.style.display = 'none';
+        }
+    }
+    
+    function loadModels() {
+        fetch('/api/list_models')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('modelSelect');
+                const batchSelect = document.getElementById('batchModelSelect');
+                const modelList = document.getElementById('modelList');
+                
+                select.innerHTML = '<option value="">-- Select a model --</option>';
+                batchSelect.innerHTML = '<option value="">-- Select a model --</option>';
+                
+                if (data.success && data.models.length > 0) {
+                    // Populate dropdowns
+                    data.models.forEach(model => {
+                        const option1 = document.createElement('option');
+                        option1.value = model.path;
+                        option1.textContent = `${model.name} (${model.dataset}) - ${model.modified}`;
+                        select.appendChild(option1);
+                        
+                        const option2 = document.createElement('option');
+                        option2.value = model.path;
+                        option2.textContent = `${model.name} (${model.dataset}) - ${model.modified}`;
+                        batchSelect.appendChild(option2);
+                    });
+                    
+                    // Populate model list
+                    let html = '<table style="width: 100%; border-collapse: collapse;">';
+                    html += '<thead><tr style="background: #f5f5f5;">';
+                    html += '<th style="padding: 0.75rem; text-align: left;">Name</th>';
+                    html += '<th style="padding: 0.75rem; text-align: left;">Size</th>';
+                    html += '<th style="padding: 0.75rem; text-align: left;">Modified</th>';
+                    html += '<th style="padding: 0.75rem; text-align: center;">Actions</th>';
+                    html += '</tr></thead><tbody>';
+                    
+                    data.models.forEach(model => {
+                        html += `<tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 0.75rem;">${model.name}</td>
+                            <td style="padding: 0.75rem;">${model.size}</td>
+                            <td style="padding: 0.75rem;">${model.modified}</td>
+                            <td style="padding: 0.75rem; text-align: center;">
+                                <button class="btn btn-primary" onclick='downloadModel(${JSON.stringify(model.path)})' style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+                                    Download
+                                </button>
+                            </td>
+                        </tr>`;
+                    });
+                    
+                    html += '</tbody></table>';
+                    modelList.innerHTML = html;
+                } else {
+                    modelList.innerHTML = '<p style="color: #666; text-align: center;">No trained models found. Please train a model first.</p>';
+                    showAlert('No trained models found', 'info');
+                }
+            })
+            .catch(error => {
+                document.getElementById('modelList').innerHTML = 
+                    '<p style="color: #666; text-align: center;">Error loading models</p>';
+            });
+    }
+    
+    function previewImage(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('previewImg').src = e.target.result;
+                document.getElementById('imagePreview').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    // Toggle manual threshold section based on adaptive checkbox
+    document.getElementById('useAdaptiveThreshold').addEventListener('change', function() {
+        const manualSection = document.getElementById('manualThresholdSection');
+        manualSection.style.display = this.checked ? 'none' : 'block';
+    });
+    
+    // Update threshold value display when slider changes
+    function updateThresholdValue() {
+        const slider = document.getElementById('thresholdSlider');
+        const value = document.getElementById('thresholdValue');
+        value.value = slider.value;
+    }
+    
+    // Update threshold slider when value input changes
+    function updateThresholdSlider() {
+        const slider = document.getElementById('thresholdSlider');
+        const value = document.getElementById('thresholdValue');
+        slider.value = value.value;
+    }
+    
+    function runInference() {
+        const modelPath = document.getElementById('modelSelect').value;
+        const imageInput = document.getElementById('imageInput');
+        const useAdaptive = document.getElementById('useAdaptiveThreshold').checked;
+        const manualThreshold = parseFloat(document.getElementById('thresholdValue').value);
+        const showHeatmap = document.getElementById('showHeatmap').checked;
+        
+        if (!modelPath) {
+            showAlert('Please select a model', 'error');
+            return;
+        }
+        
+        if (!imageInput.files || imageInput.files.length === 0) {
+            showAlert('Please upload an image', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('image', imageInput.files[0]);
+        formData.append('model_path', modelPath);
+        formData.append('use_adaptive_threshold', useAdaptive);
+        formData.append('manual_threshold', manualThreshold);
+        formData.append('generate_heatmap', showHeatmap);
+        
+        const btn = document.getElementById('inferenceBtn');
+        btn.disabled = true;
+        btn.textContent = 'Running (OpenVINO)...';
+        
+        // Show info message
+        const thresholdInfo = useAdaptive ? 'adaptive threshold' : `threshold ${manualThreshold}`;
+        showAlert(`Running inference with OpenVINO (${thresholdInfo})...`, 'info');
+        
+        fetch('/api/run_inference', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = 'Run Inference';
+            
+            if (data.success) {
+                displayResults(data.result);
+                showAlert('Inference completed successfully using OpenVINO!', 'success');
+            } else {
+                showAlert(`Error: ${data.error}`, 'error');
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.textContent = 'Run Inference';
+            showAlert(`Error: ${error.message}`, 'error');
+        });
+    }
+    
+    function runBatchInference() {
+        const modelPath = document.getElementById('batchModelSelect').value;
+        const normalInput = document.getElementById('normalImageInput');
+        const abnormalInput = document.getElementById('abnormalImageInput');
+        
+        if (!modelPath) {
+            showAlert('Please select a model', 'error');
+            return;
+        }
+        
+        const normalCount = normalInput.files ? normalInput.files.length : 0;
+        const abnormalCount = abnormalInput.files ? abnormalInput.files.length : 0;
+        const totalCount = normalCount + abnormalCount;
+        
+        if (totalCount === 0) {
+            showAlert('Please upload at least one image (normal or abnormal)', 'error');
+            return;
+        }
+        
+        const formData = new FormData();
+        
+        // Add normal images with label
+        for (let i = 0; i < normalCount; i++) {
+            formData.append('images', normalInput.files[i]);
+            formData.append('labels', 'normal');  // Label for each normal image
+        }
+        
+        // Add abnormal images with label
+        for (let i = 0; i < abnormalCount; i++) {
+            formData.append('images', abnormalInput.files[i]);
+            formData.append('labels', 'abnormal');  // Label for each abnormal image
+        }
+        
+        formData.append('model_path', modelPath);
+        
+        const btn = document.getElementById('batchInferenceBtn');
+        btn.disabled = true;
+        btn.textContent = `Analyzing ${totalCount} images...`;
+        
+        showAlert(`Processing ${totalCount} images (${normalCount} normal, ${abnormalCount} abnormal) with OpenVINO...`, 'info');
+        
+        fetch('/api/batch_inference', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = 'Analyze Batch';
+            
+            if (data.success) {
+                displayBatchResults(data);
+                showAlert('Batch analysis completed successfully!', 'success');
+            } else {
+                showAlert(`Error: ${data.error}`, 'error');
+            }
+        })
+        .catch(error => {
+            btn.disabled = false;
+            btn.textContent = 'Analyze Batch';
+            showAlert(`Error: ${error.message}`, 'error');
+        });
+    }
+    
+    function displayBatchResults(data) {
+        const container = document.getElementById('batchResultsContainer');
+        container.style.display = 'block';
+        
+        // Display statistics
+        if (data.statistics) {
+            const stats = data.statistics;
+            const statsGrid = document.getElementById('statsGrid');
+            
+            let statsHTML = `
+                <div class="stat-card">
+                    <div class="stat-value">${stats.total_images}</div>
+                    <div class="stat-label">Total Images</div>
+                </div>
+            `;
+            
+            // Show uploaded counts if we have them
+            if (stats.normal_images_uploaded !== undefined && stats.abnormal_images_uploaded !== undefined) {
+                statsHTML += `
+                    <div class="stat-card" style="background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);">
+                        <div class="stat-value">${stats.normal_images_uploaded}</div>
+                        <div class="stat-label">Normal Uploaded</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%);">
+                        <div class="stat-value">${stats.abnormal_images_uploaded}</div>
+                        <div class="stat-label">Abnormal Uploaded</div>
+                    </div>
+                `;
+            }
+            
+            statsHTML += `
+                <div class="stat-card">
+                    <div class="stat-value">${stats.normal_count}</div>
+                    <div class="stat-label">Predicted Normal</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.anomaly_count}</div>
+                    <div class="stat-label">Predicted Anomaly</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.mean_score.toFixed(4)}</div>
+                    <div class="stat-label">Mean Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.median_score.toFixed(4)}</div>
+                    <div class="stat-label">Median Score</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.min_score.toFixed(4)} - ${stats.max_score.toFixed(4)}</div>
+                    <div class="stat-label">Score Range</div>
+                </div>
+            `;
+            
+            statsGrid.innerHTML = statsHTML;
+            
+            // Display suggested threshold with enhanced explanation
+            const suggestionDiv = document.getElementById('thresholdSuggestion');
+            let suggestionHTML = `
+                <h4 style="margin: 0 0 0.5rem 0; color: #f57c00;">📌 Recommended Threshold Setting:</h4>
+                <p style="margin: 0; font-size: 1.3rem;"><strong>${stats.suggested_threshold.toFixed(4)}</strong></p>
+            `;
+            
+            if (stats.separation_quality) {
+                const qualityColors = {
+                    'Good': '#4caf50',
+                    'Fair': '#ff9800',
+                    'Poor': '#f44336',
+                    'Unknown': '#9e9e9e'
+                };
+                const qualityColor = qualityColors[stats.separation_quality] || '#9e9e9e';
+                
+                suggestionHTML += `
+                    <p style="margin: 0.5rem 0; font-size: 1rem;">
+                        <span style="display: inline-block; padding: 0.25rem 0.75rem; background: ${qualityColor}; color: white; border-radius: 20px; font-weight: bold;">
+                            Separation Quality: ${stats.separation_quality}
+                        </span>
+                    </p>
+                `;
+            }
+            
+            if (stats.normal_images_uploaded > 0 && stats.abnormal_images_uploaded > 0) {
+                suggestionHTML += `
+                    <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">
+                        This threshold is calculated based on your uploaded normal and abnormal images. 
+                        It's positioned to optimally separate the two groups. Use this value for best results!
+                    </p>
+                `;
+            } else {
+                suggestionHTML += `
+                    <p style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;">
+                        Based on your data distribution, this threshold should provide good separation.
+                        💡 Tip: Upload both normal AND abnormal images next time for more accurate threshold recommendations!
+                    </p>
+                `;
+            }
+            
+            suggestionDiv.innerHTML = suggestionHTML;
+        }
+        
+        // Display histogram
+        if (data.histogram) {
+            document.getElementById('histogramImage').src = 'data:image/png;base64,' + data.histogram;
+        }
+        
+        // Display detailed results table with labels
+        if (data.results && data.results.length > 0) {
+            let tableHTML = '<table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">';
+            tableHTML += '<thead><tr style="background: #f5f5f5;">';
+            tableHTML += '<th style="padding: 0.75rem; text-align: left; border-bottom: 2px solid #ddd;">Filename</th>';
+            tableHTML += '<th style="padding: 0.75rem; text-align: left; border-bottom: 2px solid #ddd;">Uploaded As</th>';
+            tableHTML += '<th style="padding: 0.75rem; text-align: left; border-bottom: 2px solid #ddd;">Anomaly Score</th>';
+            tableHTML += '<th style="padding: 0.75rem; text-align: left; border-bottom: 2px solid #ddd;">Predicted</th>';
+            tableHTML += '</tr></thead><tbody>';
+            
+            data.results.forEach((result, index) => {
+                const bgColor = index % 2 === 0 ? '#fff' : '#f9f9f9';
+                const predColor = result.prediction === 'Anomaly' ? '#f5576c' : '#4facfe';
+                const scoreDisplay = result.anomaly_score !== null ? result.anomaly_score.toFixed(4) : 'Error';
+                const labelDisplay = result.label === 'normal' ? '📘 Normal' : result.label === 'abnormal' ? '📕 Abnormal' : '❓ Unknown';
+                const labelColor = result.label === 'normal' ? '#2196f3' : result.label === 'abnormal' ? '#f44336' : '#9e9e9e';
+                
+                tableHTML += `<tr style="background: ${bgColor};">
+                    <td style="padding: 0.75rem;">${result.filename}</td>
+                    <td style="padding: 0.75rem;">
+                        <span style="color: ${labelColor}; font-weight: bold;">${labelDisplay}</span>
+                    </td>
+                    <td style="padding: 0.75rem; font-weight: bold;">${scoreDisplay}</td>
+                    <td style="padding: 0.75rem;">
+                        <span style="color: ${predColor}; font-weight: bold;">${result.prediction}</span>
+                    </td>
+                </tr>`;
+            });
+            
+            tableHTML += '</tbody></table>';
+            document.getElementById('resultsTable').innerHTML = tableHTML;
+        }
+        
+        // Scroll to results
+        container.scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function displayResults(result) {
+        document.getElementById('resultsContainer').style.display = 'block';
+        
+        // Update anomaly score
+        const score = parseFloat(result.anomaly_score).toFixed(4);
+        document.getElementById('anomalyScore').textContent = score;
+        
+        // Update prediction
+        const prediction = result.has_anomaly ? 'Anomaly' : 'Normal';
+        document.getElementById('prediction').textContent = prediction;
+        
+        // Update threshold used
+        const threshold = parseFloat(result.threshold_used).toFixed(4);
+        document.getElementById('thresholdUsed').textContent = threshold;
+        
+        // Color code prediction card
+        const predCard = document.getElementById('predictionCard');
+        if (result.has_anomaly) {
+            predCard.style.background = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+        } else {
+            predCard.style.background = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+        }
+        
+        // Display images
+        if (result.original_image) {
+            document.getElementById('originalImage').src = 'data:image/png;base64,' + result.original_image;
+        }
+        
+        if (result.heatmap_image) {
+            document.getElementById('heatmapImage').src = 'data:image/png;base64,' + result.heatmap_image;
+            document.getElementById('heatmapContainer').style.display = 'block';
+        } else {
+            document.getElementById('heatmapContainer').style.display = 'none';
+        }
+        
+        if (result.overlay_image) {
+            document.getElementById('overlayImage').src = 'data:image/png;base64,' + result.overlay_image;
+            document.getElementById('overlayContainer').style.display = 'block';
+        } else {
+            document.getElementById('overlayContainer').style.display = 'none';
+        }
+        
+        // Update interpretation
+        let interpretation = '';
+        if (result.has_anomaly) {
+            interpretation = `The model detected an anomaly in this image with a score of ${score} (threshold: ${threshold}). `;
+            interpretation += 'This indicates that the image contains regions or patterns that differ significantly from the normal training samples. ';
+            interpretation += 'Higher scores suggest stronger anomalies.';
+        } else {
+            interpretation = `The model classified this image as normal with an anomaly score of ${score} (threshold: ${threshold}). `;
+            interpretation += 'This indicates that the image is similar to the normal training samples and does not contain significant anomalies. ';
+            interpretation += 'Lower scores suggest the image is more typical of normal samples.';
+        }
+        
+        document.getElementById('interpretation').textContent = interpretation;
+        
+        // Scroll to results
+        document.getElementById('resultsContainer').scrollIntoView({ behavior: 'smooth' });
+    }
+    
+    function downloadModel(modelPath) {
+        fetch('/api/download_model', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: modelPath })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Download failed');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = modelPath.split(/[\\/]/).pop(); // Get filename from path
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            showAlert('Model download started!', 'success');
+        })
+        .catch(error => {
+            showAlert(`Download error: ${error.message}`, 'error');
+        });
+    }
+    
+    // Load models on page load
+    loadModels();
+</script>
+{% endblock %}

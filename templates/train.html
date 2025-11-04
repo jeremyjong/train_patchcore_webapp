@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Training - PatchCore Training{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="card-title">🚀 Model Training</h1>
+    
+    <div id="alertContainer"></div>
+    
+    <div class="form-group">
+        <label class="form-label">Select Configuration File</label>
+        <select class="form-control" id="configSelect">
+            <option value="">-- Select a config file --</option>
+        </select>
+    </div>
+    
+    <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+        <button class="btn btn-success" onclick="startTraining()" id="startBtn">
+            Start Training
+        </button>
+        <button class="btn btn-secondary" onclick="refreshStatus()" id="refreshBtn">
+            Refresh Status
+        </button>
+    </div>
+</div>
+
+<div id="trainingContainer" style="display: none;">
+    <div class="card">
+        <h2 class="card-title">📊 Training Progress</h2>
+        
+        <div class="stats-grid" style="margin-bottom: 2rem;">
+            <div class="stat-card">
+                <div class="stat-value" id="statusValue">Idle</div>
+                <div class="stat-label">Status</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="epochValue">0 / 0</div>
+                <div class="stat-label">Epoch</div>
+            </div>
+        </div>
+        
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar" style="width: 0%;">0%</div>
+        </div>
+        
+        <div style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Training Logs</h3>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry">Waiting for training to start...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="completedContainer" style="display: none;">
+    <div class="card">
+        <h2 class="card-title">✅ Training Completed</h2>
+        <div id="resultsContent"></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">💡 Training Tips</h2>
+    <ul style="line-height: 2; color: #666;">
+        <li><strong>PatchCore Efficiency:</strong> PatchCore typically requires only 1 epoch of training</li>
+        <li><strong>Memory Usage:</strong> The model stores a memory bank of normal features during training</li>
+        <li><strong>Coreset Sampling:</strong> Lower sampling ratios (0.01-0.1) reduce memory but may affect accuracy</li>
+        <li><strong>Backbone Selection:</strong> Wide ResNet-50 offers the best accuracy-speed tradeoff</li>
+        <li><strong>Feature Layers:</strong> Using layers 2 and 3 typically provides good results</li>
+        <li><strong>Dataset Size:</strong> More normal training samples improve anomaly detection accuracy</li>
+    </ul>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let trainingInterval = null;
+    
+    function showAlert(message, type) {
+        const alertContainer = document.getElementById('alertContainer');
+        const alertClass = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+        alertContainer.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+        setTimeout(() => {
+            alertContainer.innerHTML = '';
+        }, 5000);
+    }
+    
+    function loadConfigs() {
+        fetch('/api/list_configs')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('configSelect');
+                select.innerHTML = '<option value="">-- Select a config file --</option>';
+                
+                if (data.success && data.configs.length > 0) {
+                    data.configs.forEach(config => {
+                        const option = document.createElement('option');
+                        option.value = config.path;
+                        option.textContent = `${config.name} (${config.modified})`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    showAlert('No config files found. Please create one first.', 'info');
+                }
+            });
+    }
+    
+    function startTraining() {
+        const configPath = document.getElementById('configSelect').value;
+        
+        if (!configPath) {
+            showAlert('Please select a configuration file', 'error');
+            return;
+        }
+        
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('startBtn').textContent = 'Starting...';
+        
+        fetch('/api/start_training', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ config_path: configPath })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Training started successfully!', 'success');
+                document.getElementById('trainingContainer').style.display = 'block';
+                document.getElementById('completedContainer').style.display = 'none';
+                
+                // Start polling for updates
+                trainingInterval = setInterval(updateTrainingStatus, 2000);
+            } else {
+                showAlert(`Error: ${data.error}`, 'error');
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('startBtn').textContent = 'Start Training';
+            }
+        })
+        .catch(error => {
+            showAlert(`Error: ${error.message}`, 'error');
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('startBtn').textContent = 'Start Training';
+        });
+    }
+    
+    function updateTrainingStatus() {
+        fetch('/api/training_status')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const state = data.state;
+                    
+                    // Update status
+                    document.getElementById('statusValue').textContent = 
+                        state.status.charAt(0).toUpperCase() + state.status.slice(1).replace('_', ' ');
+                    
+                    // Update epoch
+                    document.getElementById('epochValue').textContent = 
+                        `${state.current_epoch} / ${state.total_epochs}`;
+                    
+                    // Update progress bar
+                    const progress = state.total_epochs > 0 
+                        ? (state.current_epoch / state.total_epochs) * 100 
+                        : 0;
+                    document.getElementById('progressBar').style.width = `${progress}%`;
+                    document.getElementById('progressBar').textContent = `${Math.round(progress)}%`;
+                    
+                    // Update logs
+                    const logContainer = document.getElementById('logContainer');
+                    logContainer.innerHTML = '';
+                    state.logs.forEach(log => {
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry';
+                        logEntry.textContent = log;
+                        logContainer.appendChild(logEntry);
+                    });
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                    
+                    // Check if training completed
+                    if (!state.is_training && state.status === 'completed') {
+                        clearInterval(trainingInterval);
+                        document.getElementById('startBtn').disabled = false;
+                        document.getElementById('startBtn').textContent = 'Start Training';
+                        
+                        // Show completion
+                        document.getElementById('completedContainer').style.display = 'block';
+                        document.getElementById('resultsContent').innerHTML = `
+                            <div style="padding: 1rem; background: #d4edda; border-radius: 5px; color: #155724; margin-bottom: 1rem;">
+                                Training completed successfully!
+                            </div>
+                            <p style="color: #666;"><strong>Model saved to:</strong> ${state.model_path || 'See logs for path'}</p>
+                            <p style="color: #666; margin-top: 0.5rem;">You can now use this model for inference.</p>
+                            <a href="/inference" class="btn btn-primary" style="margin-top: 1rem; display: inline-block; text-decoration: none;">
+                                Go to Inference
+                            </a>
+                        `;
+                        
+                        showAlert('Training completed successfully!', 'success');
+                    } else if (!state.is_training && state.status === 'error') {
+                        clearInterval(trainingInterval);
+                        document.getElementById('startBtn').disabled = false;
+                        document.getElementById('startBtn').textContent = 'Start Training';
+                        showAlert(`Training failed: ${state.error}`, 'error');
+                    }
+                }
+            });
+    }
+    
+    function refreshStatus() {
+        updateTrainingStatus();
+        showAlert('Status refreshed', 'info');
+    }
+    
+    // Load configs on page load
+    loadConfigs();
+    
+    // Check if training is in progress
+    fetch('/api/training_status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.state.is_training) {
+                document.getElementById('trainingContainer').style.display = 'block';
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('startBtn').textContent = 'Training in Progress...';
+                trainingInterval = setInterval(updateTrainingStatus, 2000);
+            }
+        });
+</script>
+{% endblock %}

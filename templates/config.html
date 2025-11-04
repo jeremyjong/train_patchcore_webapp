@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - PatchCore Training{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="card-title">⚙️ Configuration Generator (Custom Folder Format)</h1>
+    
+    <div id="alertContainer"></div>
+    
+    <form id="configForm">
+        <h3 style="margin: 1.5rem 0 1rem 0; color: #667eea;">Dataset Configuration</h3>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Dataset Path *</label>
+                <input type="text" class="form-control" id="datasetPath" name="dataset_path" required>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Dataset Name</label>
+                <input type="text" class="form-control" id="datasetName" name="dataset_name" value="custom">
+            </div>
+        </div>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Task Type</label>
+                <select class="form-control" id="task" name="task">
+                    <option value="classification" selected>Classification</option>
+                    <option value="segmentation">Segmentation</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Seed</label>
+                <input type="number" class="form-control" id="seed" name="seed" value="0">
+            </div>
+        </div>
+        
+        <h3 style="margin: 1.5rem 0 1rem 0; color: #667eea;">Image Settings</h3>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Image Size (pixels)</label>
+                <input type="number" class="form-control" id="imageSize" name="image_size" value="256">
+                <small style="color: #666;">Images will be resized to this square dimension</small>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Test Split Ratio</label>
+                <input type="number" class="form-control" id="testSplitRatio" name="test_split_ratio" 
+                       value="0.2" step="0.05" min="0" max="0.5">
+                <small style="color: #666;">Fraction of data used for testing (0-0.5)</small>
+            </div>
+        </div>
+        
+        <h3 style="margin: 1.5rem 0 1rem 0; color: #667eea;">Training Parameters</h3>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Max Epochs</label>
+                <input type="number" class="form-control" id="maxEpochs" name="max_epochs" value="1" min="1">
+                <small style="color: #666;">PatchCore typically needs only 1 epoch</small>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Train Batch Size</label>
+                <input type="number" class="form-control" id="trainBatchSize" name="train_batch_size" value="8">
+            </div>
+        </div>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Eval Batch Size</label>
+                <input type="number" class="form-control" id="evalBatchSize" name="eval_batch_size" value="8">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Number of Workers</label>
+                <input type="number" class="form-control" id="numWorkers" name="num_workers" value="8">
+                <small style="color: #666;">Set to 0-2 on Windows if issues occur</small>
+            </div>
+        </div>
+        
+        <h3 style="margin: 1.5rem 0 1rem 0; color: #667eea;">Model Configuration</h3>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Backbone</label>
+                <select class="form-control" id="backbone" name="backbone">
+                    <option value="wide_resnet50_2" selected>Wide ResNet-50-2 (Best Accuracy)</option>
+                    <option value="resnet18">ResNet-18 (Fastest)</option>
+                    <option value="resnet50">ResNet-50 (Balanced)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Coreset Sampling Ratio</label>
+                <input type="number" class="form-control" id="coresetRatio" name="coreset_sampling_ratio" 
+                       value="0.05" step="0.01" min="0.01" max="1.0">
+                <small style="color: #666;">Lower = faster but less accurate (0.01-1.0)</small>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Number of Neighbors</label>
+            <input type="number" class="form-control" id="numNeighbors" name="num_neighbors" value="9">
+            <small style="color: #666;">Number of nearest neighbors for anomaly scoring</small>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Feature Layers</label>
+            <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="layers" value="layer1"> Layer 1
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="layers" value="layer2" checked> Layer 2
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="layers" value="layer3" checked> Layer 3
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" name="layers" value="layer4"> Layer 4
+                </label>
+            </div>
+        </div>
+        
+        <h3 style="margin: 1.5rem 0 1rem 0; color: #667eea;">Hardware Configuration</h3>
+        
+        <div class="grid">
+            <div class="form-group">
+                <label class="form-label">Accelerator</label>
+                <select class="form-control" id="accelerator" name="accelerator">
+                    <option value="auto" selected>Auto (GPU if available, else CPU)</option>
+                    <option value="gpu">GPU</option>
+                    <option value="cpu">CPU</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Number of Devices</label>
+                <input type="number" class="form-control" id="devices" name="devices" value="1" min="1">
+            </div>
+        </div>
+        
+        <h3 style="margin: 1.5rem 0 1rem 0; color: #667eea;">Output Configuration</h3>
+        
+        <div class="form-group">
+            <label class="form-label">Project Path</label>
+            <input type="text" class="form-control" id="projectPath" name="project_path" value="./results">
+            <small style="color: #666;">Directory where results will be saved</small>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Export Mode</label>
+            <select class="form-control" id="exportMode" name="export_mode">
+                <option value="openvino" selected>OpenVINO (Recommended - 2-5x faster inference)</option>
+                <option value="torch">PyTorch (.ckpt)</option>
+                <option value="onnx">ONNX</option>
+            </select>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">
+                💡 OpenVINO automatically optimizes your model for fast CPU inference during training.
+                The webapp will convert PyTorch models to OpenVINO automatically if needed.
+            </small>
+        </div>
+        
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-primary">Generate Configuration</button>
+            <button type="button" class="btn btn-secondary" onclick="loadSavedPath()">
+                Load Dataset Path
+            </button>
+        </div>
+    </form>
+</div>
+
+<div id="previewContainer" style="display: none;">
+    <div class="card">
+        <h2 class="card-title">📄 Configuration Preview</h2>
+        <pre id="configPreview" style="background: #f5f5f5; padding: 1rem; border-radius: 5px; overflow-x: auto; max-height: 500px; color: #333;"></pre>
+        <p style="margin-top: 1rem; color: #666;">
+            <strong>Saved to:</strong> <span id="configPath"></span>
+        </p>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">💾 Saved Configurations</h2>
+    <div id="configList">
+        <div class="loader"></div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function showAlert(message, type) {
+        const alertContainer = document.getElementById('alertContainer');
+        const alertClass = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+        // Convert newlines to <br> for HTML display
+        const formattedMessage = message.replace(/\n/g, '<br>');
+        alertContainer.innerHTML = `<div class="alert ${alertClass}">${formattedMessage}</div>`;
+        
+        // Longer timeout for multiline messages
+        const timeout = message.split('\n').length > 3 ? 10000 : 5000;
+        setTimeout(() => {
+            alertContainer.innerHTML = '';
+        }, timeout);
+    }
+    
+    function loadSavedPath() {
+        const savedPath = sessionStorage.getItem('datasetPath');
+        if (savedPath) {
+            document.getElementById('datasetPath').value = savedPath;
+            showAlert('Dataset path loaded from validation', 'info');
+        } else {
+            showAlert('No saved dataset path found. Please validate a dataset first.', 'error');
+        }
+    }
+    
+    document.getElementById('configForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        const data = {};
+        
+        for (let [key, value] of formData.entries()) {
+            if (key === 'layers') {
+                if (!data.layers) data.layers = [];
+                data.layers.push(value);
+            } else {
+                data[key] = value;
+            }
+        }
+        
+        // If no layers selected, use default
+        if (!data.layers || data.layers.length === 0) {
+            data.layers = ['layer2', 'layer3'];
+        }
+        
+        fetch('/api/generate_config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                // Show validation summary if available
+                if (result.validation) {
+                    const validation = result.validation;
+                    let validationMsg = `✅ Dataset Validated Successfully!\n\n`;
+                    validationMsg += `📁 Dataset: ${validation.dataset_path}\n`;
+                    validationMsg += `📘 Normal dir: ${validation.normal_dir} (${validation.normal_images} images)\n`;
+                    validationMsg += `📕 Abnormal dir: ${validation.abnormal_dir} (${validation.abnormal_images} images)\n`;
+                    validationMsg += `📊 Total: ${validation.total_images} images\n`;
+                    
+                    if (validation.warning) {
+                        validationMsg += `\n⚠️ ${validation.warning}`;
+                        showAlert(validationMsg, 'info');
+                    } else {
+                        showAlert(validationMsg, 'success');
+                    }
+                } else {
+                    showAlert('Configuration generated successfully!', 'success');
+                }
+                
+                // Show preview
+                document.getElementById('previewContainer').style.display = 'block';
+                document.getElementById('configPreview').textContent = 
+                    JSON.stringify(result.config, null, 2);
+                document.getElementById('configPath').textContent = result.config_path;
+                
+                // Refresh config list
+                loadConfigList();
+                
+                // Scroll to preview
+                document.getElementById('previewContainer').scrollIntoView({ behavior: 'smooth' });
+            } else {
+                // Enhanced error display
+                let errorMsg = result.error;
+                if (result.suggestion) {
+                    errorMsg += '\n\n💡 Suggestion:\n' + result.suggestion;
+                }
+                showAlert(`❌ Validation Failed:\n\n${errorMsg}`, 'error');
+            }
+        })
+        .catch(error => {
+            showAlert(`Error: ${error.message}`, 'error');
+        });
+    });
+    
+    function loadConfigList() {
+        fetch('/api/list_configs')
+            .then(response => response.json())
+            .then(data => {
+                const configList = document.getElementById('configList');
+                
+                if (data.success && data.configs.length > 0) {
+                    let html = '<table style="width: 100%; border-collapse: collapse;">';
+                    html += '<thead><tr style="background: #f5f5f5;"><th style="padding: 0.75rem; text-align: left;">Name</th><th style="padding: 0.75rem; text-align: left;">Modified</th><th style="padding: 0.75rem; text-align: center;">Actions</th></tr></thead>';
+                    html += '<tbody>';
+                    
+                    data.configs.forEach(config => {
+                        const filename = config.name;
+                        html += `<tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 0.75rem;">${config.name}</td>
+                            <td style="padding: 0.75rem;">${config.modified}</td>
+                            <td style="padding: 0.75rem; text-align: center;">
+                                <button class="btn btn-secondary" onclick="viewConfig('${config.path}')" style="padding: 0.5rem 1rem; font-size: 0.9rem; margin-right: 0.5rem;">View</button>
+                                <button class="btn btn-primary" onclick="downloadConfig('${filename}')" style="padding: 0.5rem 1rem; font-size: 0.9rem;">Download</button>
+                            </td>
+                        </tr>`;
+                    });
+                    
+                    html += '</tbody></table>';
+                    configList.innerHTML = html;
+                } else {
+                    configList.innerHTML = '<p style="color: #666; text-align: center;">No configurations found</p>';
+                }
+            });
+    }
+    
+    function viewConfig(path) {
+        fetch('/api/load_config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('previewContainer').style.display = 'block';
+                document.getElementById('configPreview').textContent = 
+                    JSON.stringify(data.config, null, 2);
+                document.getElementById('configPath').textContent = data.path || path;
+                document.getElementById('previewContainer').scrollIntoView({ behavior: 'smooth' });
+            } else {
+                showAlert(`Error: ${data.error}`, 'error');
+            }
+        })
+        .catch(error => {
+            showAlert(`Error: ${error.message}`, 'error');
+        });
+    }
+    
+    function downloadConfig(filename) {
+        window.location.href = `/api/download_config/${encodeURIComponent(filename)}`;
+        showAlert('Downloading configuration file...', 'info');
+    }
+    
+    // Load configs on page load
+    loadConfigList();
+</script>
+{% endblock %}

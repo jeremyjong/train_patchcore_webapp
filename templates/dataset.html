@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Dataset Management - PatchCore Training{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1 class="card-title">🗂️ Dataset Management (Custom Folder Format)</h1>
+    
+    <div id="alertContainer"></div>
+    
+    <div class="form-group">
+        <label class="form-label">Dataset Path (Windows Format)</label>
+        <input type="text" class="form-control" id="datasetPath" 
+               placeholder="D:\Anomalib\250916_XP7GConnector_crop_machine12_right" 
+               value="">
+        <small style="color: #666; display: block; margin-top: 0.5rem;">
+            Enter the full path to your dataset folder containing normal/ and abnormal/ subdirectories
+        </small>
+    </div>
+    
+    <button class="btn btn-primary" onclick="validateDataset()">
+        Validate Dataset
+    </button>
+    
+    <div id="loadingContainer" style="display: none;">
+        <div class="loader"></div>
+        <p style="text-align: center; color: #666;">Validating dataset...</p>
+    </div>
+</div>
+
+<div id="statsContainer" style="display: none;">
+    <div class="card">
+        <h2 class="card-title">📊 Dataset Statistics</h2>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="totalImages">0</div>
+                <div class="stat-label">Total Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="normalImages">0</div>
+                <div class="stat-label">Normal Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="abnormalImages">0</div>
+                <div class="stat-label">Abnormal Images</div>
+            </div>
+        </div>
+        
+        <div id="folderDetails" style="margin-top: 2rem;">
+            <h3 style="margin-bottom: 1rem; color: #333;">Folder Breakdown</h3>
+            <div id="folderList"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 class="card-title">📖 Dataset Format Guide</h2>
+    <p style="color: #666; margin-bottom: 1rem;">
+        Your dataset should follow the <strong>custom folder format</strong>:
+    </p>
+    <pre style="background: #f5f5f5; padding: 1rem; border-radius: 5px; overflow-x: auto; color: #333;">
+dataset_root/
+├── normal/           (or good/)
+│   ├── image001.png
+│   ├── image002.png
+│   └── ...
+└── abnormal/         (or anomaly/)
+    ├── image001.png
+    ├── image002.png
+    └── ...
+    </pre>
+    
+    <div style="margin-top: 1rem;">
+        <h3 style="color: #333; margin-bottom: 0.5rem;">Key Points:</h3>
+        <ul style="color: #666; line-height: 2;">
+            <li><strong>normal/</strong> folder contains images of normal/good samples (required)</li>
+            <li><strong>abnormal/</strong> folder contains images with anomalies/defects (optional but recommended)</li>
+            <li>Alternative names: <code>good/</code> and <code>anomaly/</code> are also supported</li>
+            <li>Supported formats: PNG, JPG, JPEG, BMP, TIFF</li>
+            <li>Images can be in subdirectories within normal/ and abnormal/</li>
+        </ul>
+    </div>
+    
+    <div style="margin-top: 1rem; padding: 1rem; background: #fff3cd; border-radius: 5px; color: #856404;">
+        <strong>Note:</strong> For Windows paths, use forward slashes (/) or double backslashes (\\\\) in the path.
+        <br>Example: <code>D:/Anomalib/MyDataset</code> or <code>D:\\Anomalib\\MyDataset</code>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function showAlert(message, type) {
+        const alertContainer = document.getElementById('alertContainer');
+        const alertClass = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+        alertContainer.innerHTML = `<div class="alert ${alertClass}">${message}</div>`;
+        setTimeout(() => {
+            alertContainer.innerHTML = '';
+        }, 5000);
+    }
+    
+    function validateDataset() {
+        const path = document.getElementById('datasetPath').value.trim();
+        
+        if (!path) {
+            showAlert('Please enter a dataset path', 'error');
+            return;
+        }
+        
+        document.getElementById('loadingContainer').style.display = 'block';
+        document.getElementById('statsContainer').style.display = 'none';
+        
+        fetch('/api/validate_dataset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('loadingContainer').style.display = 'none';
+            
+            if (data.success) {
+                showAlert('Dataset validated successfully!', 'success');
+                displayStats(data.stats);
+                
+                // Save path for use in config
+                sessionStorage.setItem('datasetPath', path);
+            } else {
+                showAlert(`Validation failed: ${data.error}`, 'error');
+            }
+        })
+        .catch(error => {
+            document.getElementById('loadingContainer').style.display = 'none';
+            showAlert(`Error: ${error.message}`, 'error');
+        });
+    }
+    
+    function displayStats(stats) {
+        document.getElementById('statsContainer').style.display = 'block';
+        document.getElementById('totalImages').textContent = stats.total_images;
+        document.getElementById('normalImages').textContent = stats.normal_images;
+        document.getElementById('abnormalImages').textContent = stats.abnormal_images;
+        
+        // Display folder breakdown
+        const folderList = document.getElementById('folderList');
+        let html = '<table style="width: 100%; border-collapse: collapse;">';
+        html += '<thead><tr style="background: #f5f5f5;"><th style="padding: 0.75rem; text-align: left;">Folder</th><th style="padding: 0.75rem; text-align: center;">Image Count</th></tr></thead>';
+        html += '<tbody>';
+        
+        html += `<tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 0.75rem;">Normal</td>
+            <td style="padding: 0.75rem; text-align: center;">${stats.structure.normal}</td>
+        </tr>`;
+        
+        html += `<tr style="border-bottom: 1px solid #eee;">
+            <td style="padding: 0.75rem;">Abnormal</td>
+            <td style="padding: 0.75rem; text-align: center;">${stats.structure.abnormal}</td>
+        </tr>`;
+        
+        html += '</tbody></table>';
+        folderList.innerHTML = html;
+    }
+    
+    // Load saved path on page load
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedPath = sessionStorage.getItem('datasetPath');
+        if (savedPath) {
+            document.getElementById('datasetPath').value = savedPath;
+        }
+    });
+</script>
+{% endblock %}
