@@ -24,10 +24,12 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.getcwd(), 'uploads')
 app.config['MODELS_FOLDER'] = os.path.join(os.getcwd(), 'models')
 app.config['CONFIGS_FOLDER'] = os.path.join(os.getcwd(), 'configs')
 app.config['RESULTS_FOLDER'] = os.path.join(os.getcwd(), 'results')
+app.config['DATASETS_FOLDER'] = os.path.join(os.getcwd(), 'datasets')
 
 # Create necessary directories
-for folder in [app.config['UPLOAD_FOLDER'], app.config['MODELS_FOLDER'], 
-               app.config['CONFIGS_FOLDER'], app.config['RESULTS_FOLDER']]:
+for folder in [app.config['UPLOAD_FOLDER'], app.config['MODELS_FOLDER'],
+               app.config['CONFIGS_FOLDER'], app.config['RESULTS_FOLDER'],
+               app.config['DATASETS_FOLDER']]:
     os.makedirs(folder, exist_ok=True)
 
 # Global training state
@@ -70,6 +72,12 @@ def train_page():
 def inference_page():
     """Model inference/testing page"""
     return render_template('inference.html')
+
+
+@app.route('/upload')
+def upload_page():
+    """Image upload page for creating datasets"""
+    return render_template('upload.html')
 
 
 @app.route('/api/validate_dataset', methods=['POST'])
@@ -1670,6 +1678,273 @@ def run_openvino_inference(model_path, image_path, use_adaptive_threshold=True,
         raise
 
 
+# ============================================================================
+# DATASET UPLOAD API ENDPOINTS
+# ============================================================================
+
+@app.route('/api/create_dataset', methods=['POST'])
+def create_dataset():
+    """Create a new dataset folder structure"""
+    try:
+        data = request.json
+        dataset_name = data.get('name', '').strip()
+
+        if not dataset_name:
+            return jsonify({'success': False, 'error': 'Dataset name is required'})
+
+        # Sanitize dataset name
+        dataset_name = secure_filename(dataset_name)
+        dataset_path = os.path.join(app.config['DATASETS_FOLDER'], dataset_name)
+
+        if os.path.exists(dataset_path):
+            return jsonify({'success': False, 'error': 'Dataset already exists'})
+
+        # Create dataset structure
+        normal_path = os.path.join(dataset_path, 'normal')
+        abnormal_path = os.path.join(dataset_path, 'abnormal')
+
+        os.makedirs(normal_path, exist_ok=True)
+        os.makedirs(abnormal_path, exist_ok=True)
+
+        logger.info(f"Created dataset: {dataset_name}")
+
+        return jsonify({
+            'success': True,
+            'dataset_name': dataset_name,
+            'dataset_path': dataset_path
+        })
+
+    except Exception as e:
+        logger.error(f"Error creating dataset: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/list_datasets', methods=['GET'])
+def list_datasets():
+    """List all uploaded datasets"""
+    try:
+        datasets = []
+        datasets_folder = app.config['DATASETS_FOLDER']
+
+        if os.path.exists(datasets_folder):
+            for item in os.listdir(datasets_folder):
+                item_path = os.path.join(datasets_folder, item)
+                if os.path.isdir(item_path):
+                    # Get statistics
+                    stats = analyze_dataset(item_path)
+                    datasets.append({
+                        'name': item,
+                        'path': item_path,
+                        'normal_images': stats['normal_images'],
+                        'abnormal_images': stats['abnormal_images'],
+                        'total_images': stats['total_images'],
+                        'valid': stats['valid']
+                    })
+
+        return jsonify({'success': True, 'datasets': datasets})
+
+    except Exception as e:
+        logger.error(f"Error listing datasets: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/upload_images', methods=['POST'])
+def upload_images():
+    """Upload images to a dataset (normal or abnormal)"""
+    try:
+        dataset_name = request.form.get('dataset_name')
+        image_type = request.form.get('image_type')  # 'normal' or 'abnormal'
+
+        if not dataset_name or not image_type:
+            return jsonify({'success': False, 'error': 'Dataset name and image type are required'})
+
+        if image_type not in ['normal', 'abnormal']:
+            return jsonify({'success': False, 'error': 'Image type must be "normal" or "abnormal"'})
+
+        dataset_path = os.path.join(app.config['DATASETS_FOLDER'], dataset_name)
+        if not os.path.exists(dataset_path):
+            return jsonify({'success': False, 'error': 'Dataset does not exist'})
+
+        target_folder = os.path.join(dataset_path, image_type)
+
+        # Check if files were uploaded
+        if 'files' not in request.files:
+            return jsonify({'success': False, 'error': 'No files uploaded'})
+
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'success': False, 'error': 'No files selected'})
+
+        uploaded_count = 0
+        errors = []
+
+        # Allowed image extensions
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+
+        for file in files:
+            if file.filename == '':
+                continue
+
+            # Check file extension
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            if file_ext not in allowed_extensions:
+                errors.append(f"{file.filename}: Invalid file type (allowed: {', '.join(allowed_extensions)})")
+                continue
+
+            # Secure filename
+            filename = secure_filename(file.filename)
+
+            # Handle duplicate filenames
+            file_path = os.path.join(target_folder, filename)
+            if os.path.exists(file_path):
+                # Add timestamp to make unique
+                name, ext = os.path.splitext(filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{name}_{timestamp}{ext}"
+                file_path = os.path.join(target_folder, filename)
+
+            try:
+                file.save(file_path)
+                uploaded_count += 1
+            except Exception as e:
+                errors.append(f"{file.filename}: {str(e)}")
+
+        # Get updated statistics
+        stats = analyze_dataset(dataset_path)
+
+        response = {
+            'success': True,
+            'uploaded_count': uploaded_count,
+            'stats': stats
+        }
+
+        if errors:
+            response['errors'] = errors
+
+        return jsonify(response)
+
+    except Exception as e:
+        logger.error(f"Error uploading images: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/get_dataset_images', methods=['POST'])
+def get_dataset_images():
+    """Get list of images in a dataset"""
+    try:
+        data = request.json
+        dataset_name = data.get('dataset_name')
+        image_type = data.get('image_type', 'normal')  # 'normal' or 'abnormal'
+
+        if not dataset_name:
+            return jsonify({'success': False, 'error': 'Dataset name is required'})
+
+        dataset_path = os.path.join(app.config['DATASETS_FOLDER'], dataset_name)
+        if not os.path.exists(dataset_path):
+            return jsonify({'success': False, 'error': 'Dataset does not exist'})
+
+        image_folder = os.path.join(dataset_path, image_type)
+        images = []
+
+        if os.path.exists(image_folder):
+            allowed_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+            for filename in os.listdir(image_folder):
+                if os.path.splitext(filename)[1].lower() in allowed_extensions:
+                    images.append({
+                        'filename': filename,
+                        'path': os.path.join(image_folder, filename),
+                        'size': os.path.getsize(os.path.join(image_folder, filename))
+                    })
+
+        return jsonify({
+            'success': True,
+            'images': images,
+            'count': len(images)
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting dataset images: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/delete_image', methods=['POST'])
+def delete_image():
+    """Delete an image from a dataset"""
+    try:
+        data = request.json
+        dataset_name = data.get('dataset_name')
+        image_type = data.get('image_type')
+        filename = data.get('filename')
+
+        if not all([dataset_name, image_type, filename]):
+            return jsonify({'success': False, 'error': 'Missing required parameters'})
+
+        dataset_path = os.path.join(app.config['DATASETS_FOLDER'], dataset_name)
+        image_path = os.path.join(dataset_path, image_type, filename)
+
+        if not os.path.exists(image_path):
+            return jsonify({'success': False, 'error': 'Image not found'})
+
+        os.remove(image_path)
+
+        # Get updated statistics
+        stats = analyze_dataset(dataset_path)
+
+        return jsonify({
+            'success': True,
+            'message': f'Deleted {filename}',
+            'stats': stats
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting image: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/delete_dataset', methods=['POST'])
+def delete_dataset():
+    """Delete an entire dataset"""
+    try:
+        data = request.json
+        dataset_name = data.get('dataset_name')
+
+        if not dataset_name:
+            return jsonify({'success': False, 'error': 'Dataset name is required'})
+
+        dataset_path = os.path.join(app.config['DATASETS_FOLDER'], dataset_name)
+
+        if not os.path.exists(dataset_path):
+            return jsonify({'success': False, 'error': 'Dataset not found'})
+
+        shutil.rmtree(dataset_path)
+
+        return jsonify({
+            'success': True,
+            'message': f'Deleted dataset: {dataset_name}'
+        })
+
+    except Exception as e:
+        logger.error(f"Error deleting dataset: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/get_dataset_image/<dataset_name>/<image_type>/<filename>')
+def get_dataset_image(dataset_name, image_type, filename):
+    """Serve an image from a dataset"""
+    try:
+        dataset_path = os.path.join(app.config['DATASETS_FOLDER'], dataset_name)
+        image_path = os.path.join(dataset_path, image_type, filename)
+
+        if not os.path.exists(image_path):
+            return jsonify({'error': 'Image not found'}), 404
+
+        return send_file(image_path, mimetype='image/jpeg')
+
+    except Exception as e:
+        logger.error(f"Error serving image: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("PatchCore Training Web Application")
@@ -1678,9 +1953,10 @@ if __name__ == '__main__':
     print(f"\nServer starting on http://localhost:5000")
     print("\nDataset Format: normal/ and abnormal/ folders")
     print("\nDirectories:")
-    print(f"  Configs: {app.config['CONFIGS_FOLDER']}")
-    print(f"  Models:  {app.config['MODELS_FOLDER']}")
-    print(f"  Results: {app.config['RESULTS_FOLDER']}")
+    print(f"  Configs:  {app.config['CONFIGS_FOLDER']}")
+    print(f"  Models:   {app.config['MODELS_FOLDER']}")
+    print(f"  Results:  {app.config['RESULTS_FOLDER']}")
+    print(f"  Datasets: {app.config['DATASETS_FOLDER']}")
     print("\n" + "=" * 60)
-    
+
     app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
