@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Images - PatchCore Training{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 class="card-title" data-i18n="upload_title">📤 Upload Training Images</h2>
+
+    <!-- Dataset Selection/Creation -->
+    <div class="form-group">
+        <label class="form-label" data-i18n="upload_dataset_label">Dataset:</label>
+        <div style="display: flex; gap: 1rem; align-items: flex-end;">
+            <div style="flex: 1;">
+                <select id="datasetSelect" class="form-control">
+                    <option value="" data-i18n="upload_select_dataset">-- Select or Create New Dataset --</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="showCreateDatasetModal()" data-i18n="upload_create_new">
+                ➕ Create New
+            </button>
+            <button class="btn btn-secondary" onclick="loadDatasets()" data-i18n="upload_refresh">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Dataset Statistics -->
+    <div id="datasetStats" style="display: none; margin-top: 1.5rem;">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="normalCount">0</div>
+                <div class="stat-label" data-i18n="upload_normal_images">Normal Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="abnormalCount">0</div>
+                <div class="stat-label" data-i18n="upload_abnormal_images">Abnormal Images</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="totalCount">0</div>
+                <div class="stat-label" data-i18n="upload_total_images">Total Images</div>
+            </div>
+        </div>
+        <div style="margin-top: 1rem;">
+            <p><strong data-i18n="upload_dataset_path">Dataset Path:</strong> <code id="datasetPath"></code></p>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Sections -->
+<div id="uploadSection" style="display: none;">
+    <!-- Normal Images Upload -->
+    <div class="card">
+        <h3 class="card-title" data-i18n="upload_normal_title">✅ Upload Normal Images</h3>
+        <div class="form-group">
+            <label class="form-label" data-i18n="upload_select_files">Select Images:</label>
+            <input type="file" id="normalFiles" class="form-control" multiple accept="image/*">
+        </div>
+        <button class="btn btn-success" onclick="uploadImages('normal')" data-i18n="upload_button_normal">
+            ⬆️ Upload Normal Images
+        </button>
+        <div id="normalUploadStatus" style="margin-top: 1rem;"></div>
+
+        <!-- Normal Images Preview -->
+        <div id="normalImagesContainer" style="margin-top: 1.5rem;">
+            <h4 data-i18n="upload_normal_preview">Normal Images:</h4>
+            <div id="normalImagesList" class="image-grid"></div>
+        </div>
+    </div>
+
+    <!-- Abnormal Images Upload -->
+    <div class="card">
+        <h3 class="card-title" data-i18n="upload_abnormal_title">❌ Upload Abnormal Images</h3>
+        <div class="form-group">
+            <label class="form-label" data-i18n="upload_select_files">Select Images:</label>
+            <input type="file" id="abnormalFiles" class="form-control" multiple accept="image/*">
+        </div>
+        <button class="btn btn-success" onclick="uploadImages('abnormal')" data-i18n="upload_button_abnormal">
+            ⬆️ Upload Abnormal Images
+        </button>
+        <div id="abnormalUploadStatus" style="margin-top: 1rem;"></div>
+
+        <!-- Abnormal Images Preview -->
+        <div id="abnormalImagesContainer" style="margin-top: 1.5rem;">
+            <h4 data-i18n="upload_abnormal_preview">Abnormal Images:</h4>
+            <div id="abnormalImagesList" class="image-grid"></div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+        <h3 class="card-title" data-i18n="upload_quick_actions">⚡ Quick Actions</h3>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button class="btn btn-primary" onclick="goToConfig()" data-i18n="upload_goto_config">
+                ➡️ Generate Config for This Dataset
+            </button>
+            <button class="btn btn-secondary" onclick="goToTrain()" data-i18n="upload_goto_train">
+                🚀 Go to Training
+            </button>
+            <button class="btn btn-secondary" style="background: #dc3545;" onclick="deleteCurrentDataset()" data-i18n="upload_delete_dataset">
+                🗑️ Delete This Dataset
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Dataset Modal -->
+<div id="createDatasetModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <h3 data-i18n="upload_create_dataset_title">Create New Dataset</h3>
+        <div class="form-group">
+            <label class="form-label" data-i18n="upload_dataset_name">Dataset Name:</label>
+            <input type="text" id="newDatasetName" class="form-control" placeholder="e.g., my_product_dataset">
+            <small data-i18n="upload_dataset_name_hint">Use lowercase letters, numbers, and underscores only</small>
+        </div>
+        <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+            <button class="btn btn-secondary" onclick="hideCreateDatasetModal()" data-i18n="upload_cancel">Cancel</button>
+            <button class="btn btn-primary" onclick="createDataset()" data-i18n="upload_create">Create</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.image-item {
+    position: relative;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f5f5f5;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.image-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.image-item img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    display: block;
+}
+
+.image-item .image-name {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+    text-align: center;
+    background: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.image-item .delete-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.image-item:hover .delete-btn {
+    opacity: 1;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+</style>
+
+<script>
+let currentDataset = null;
+
+// Load datasets on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadDatasets();
+});
+
+// Load available datasets
+async function loadDatasets() {
+    try {
+        const response = await fetch('/api/list_datasets');
+        const data = await response.json();
+
+        if (data.success) {
+            const select = document.getElementById('datasetSelect');
+            select.innerHTML = '<option value="">-- Select or Create New Dataset --</option>';
+
+            data.datasets.forEach(dataset => {
+                const option = document.createElement('option');
+                option.value = dataset.name;
+                option.textContent = `${dataset.name} (${dataset.total_images} images)`;
+                select.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading datasets:', error);
+        showAlert('error', 'Failed to load datasets: ' + error.message);
+    }
+}
+
+// Dataset selection change
+document.getElementById('datasetSelect').addEventListener('change', function() {
+    const datasetName = this.value;
+    if (datasetName) {
+        selectDataset(datasetName);
+    } else {
+        document.getElementById('datasetStats').style.display = 'none';
+        document.getElementById('uploadSection').style.display = 'none';
+    }
+});
+
+// Select a dataset
+async function selectDataset(datasetName) {
+    currentDataset = datasetName;
+    await updateDatasetStats();
+    await loadImages('normal');
+    await loadImages('abnormal');
+
+    document.getElementById('datasetStats').style.display = 'block';
+    document.getElementById('uploadSection').style.display = 'block';
+}
+
+// Update dataset statistics
+async function updateDatasetStats() {
+    try {
+        const response = await fetch('/api/list_datasets');
+        const data = await response.json();
+
+        if (data.success) {
+            const dataset = data.datasets.find(d => d.name === currentDataset);
+            if (dataset) {
+                document.getElementById('normalCount').textContent = dataset.normal_images;
+                document.getElementById('abnormalCount').textContent = dataset.abnormal_images;
+                document.getElementById('totalCount').textContent = dataset.total_images;
+                document.getElementById('datasetPath').textContent = dataset.path;
+            }
+        }
+    } catch (error) {
+        console.error('Error updating stats:', error);
+    }
+}
+
+// Show create dataset modal
+function showCreateDatasetModal() {
+    document.getElementById('createDatasetModal').style.display = 'flex';
+    document.getElementById('newDatasetName').value = '';
+    document.getElementById('newDatasetName').focus();
+}
+
+// Hide create dataset modal
+function hideCreateDatasetModal() {
+    document.getElementById('createDatasetModal').style.display = 'none';
+}
+
+// Create new dataset
+async function createDataset() {
+    const name = document.getElementById('newDatasetName').value.trim();
+
+    if (!name) {
+        alert('Please enter a dataset name');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/create_dataset', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name})
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            hideCreateDatasetModal();
+            await loadDatasets();
+            document.getElementById('datasetSelect').value = data.dataset_name;
+            await selectDataset(data.dataset_name);
+            showAlert('success', `Dataset "${data.dataset_name}" created successfully!`);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error creating dataset:', error);
+        alert('Failed to create dataset: ' + error.message);
+    }
+}
+
+// Upload images
+async function uploadImages(imageType) {
+    if (!currentDataset) {
+        alert('Please select a dataset first');
+        return;
+    }
+
+    const fileInput = document.getElementById(imageType + 'Files');
+    const files = fileInput.files;
+
+    if (files.length === 0) {
+        alert('Please select images to upload');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('dataset_name', currentDataset);
+    formData.append('image_type', imageType);
+
+    for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+    }
+
+    const statusDiv = document.getElementById(imageType + 'UploadStatus');
+    statusDiv.innerHTML = '<div class="loader"></div><p>Uploading...</p>';
+
+    try {
+        const response = await fetch('/api/upload_images', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            let message = `✅ Successfully uploaded ${data.uploaded_count} image(s)`;
+            if (data.errors && data.errors.length > 0) {
+                message += `<br>⚠️ ${data.errors.length} error(s):<br>` + data.errors.join('<br>');
+            }
+            statusDiv.innerHTML = `<div class="alert alert-success">${message}</div>`;
+
+            // Clear file input
+            fileInput.value = '';
+
+            // Refresh images and stats
+            await updateDatasetStats();
+            await loadImages(imageType);
+        } else {
+            statusDiv.innerHTML = `<div class="alert alert-error">Error: ${data.error}</div>`;
+        }
+    } catch (error) {
+        console.error('Error uploading images:', error);
+        statusDiv.innerHTML = `<div class="alert alert-error">Failed to upload: ${error.message}</div>`;
+    }
+}
+
+// Load images for preview
+async function loadImages(imageType) {
+    try {
+        const response = await fetch('/api/get_dataset_images', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                dataset_name: currentDataset,
+                image_type: imageType
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            const container = document.getElementById(imageType + 'ImagesList');
+            container.innerHTML = '';
+
+            if (data.images.length === 0) {
+                container.innerHTML = '<p style="color: #666;">No images uploaded yet</p>';
+            } else {
+                data.images.forEach(image => {
+                    const imageUrl = `/api/get_dataset_image/${currentDataset}/${imageType}/${image.filename}`;
+                    const div = document.createElement('div');
+                    div.className = 'image-item';
+                    div.innerHTML = `
+                        <img src="${imageUrl}" alt="${image.filename}">
+                        <div class="image-name" title="${image.filename}">${image.filename}</div>
+                        <button class="delete-btn" onclick="deleteImage('${imageType}', '${image.filename}')" title="Delete">×</button>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading images:', error);
+    }
+}
+
+// Delete an image
+async function deleteImage(imageType, filename) {
+    if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/delete_image', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                dataset_name: currentDataset,
+                image_type: imageType,
+                filename: filename
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            await updateDatasetStats();
+            await loadImages(imageType);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error deleting image:', error);
+        alert('Failed to delete image: ' + error.message);
+    }
+}
+
+// Delete current dataset
+async function deleteCurrentDataset() {
+    if (!currentDataset) {
+        alert('No dataset selected');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete the entire dataset "${currentDataset}"? This cannot be undone!`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/delete_dataset', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({dataset_name: currentDataset})
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            currentDataset = null;
+            document.getElementById('datasetSelect').value = '';
+            document.getElementById('datasetStats').style.display = 'none';
+            document.getElementById('uploadSection').style.display = 'none';
+            await loadDatasets();
+            showAlert('success', data.message);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error deleting dataset:', error);
+        alert('Failed to delete dataset: ' + error.message);
+    }
+}
+
+// Quick action: Go to config
+function goToConfig() {
+    if (!currentDataset) {
+        alert('No dataset selected');
+        return;
+    }
+
+    // Get the dataset path and navigate to config page
+    const datasetPath = document.getElementById('datasetPath').textContent;
+    window.location.href = `/config?dataset_path=${encodeURIComponent(datasetPath)}`;
+}
+
+// Quick action: Go to train
+function goToTrain() {
+    window.location.href = '/train';
+}
+
+// Helper function to show alerts
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type}`;
+    alertDiv.textContent = message;
+
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+
+// Handle Enter key in create dataset modal
+document.getElementById('newDatasetName').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        createDataset();
+    }
+});
+</script>
+{% endblock %}

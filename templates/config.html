@@ -354,7 +354,18 @@
         window.location.href = `/api/download_config/${encodeURIComponent(filename)}`;
         showAlert('Downloading configuration file...', 'info');
     }
-    
+
+    // Check for dataset_path URL parameter and pre-fill the form
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const datasetPath = urlParams.get('dataset_path');
+
+        if (datasetPath) {
+            document.getElementById('datasetPath').value = datasetPath;
+            showAlert('Dataset path loaded from upload page', 'info');
+        }
+    });
+
     // Load configs on page load
     loadConfigList();
 </script>

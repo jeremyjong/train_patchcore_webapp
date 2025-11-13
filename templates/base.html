@@ -321,6 +321,7 @@
             <div class="navbar-brand" data-i18n="app_title">🔍 PatchCore 訓練</div>
             <ul class="navbar-nav">
                 <li><a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" data-i18n="nav_dashboard">ダッシュボード</a></li>
+                <li><a href="{{ url_for('upload_page') }}" class="nav-link {% if request.endpoint == 'upload_page' %}active{% endif %}" data-i18n="nav_upload">アップロード</a></li>
                 <li><a href="{{ url_for('dataset_page') }}" class="nav-link {% if request.endpoint == 'dataset_page' %}active{% endif %}" data-i18n="nav_dataset">データセット</a></li>
                 <li><a href="{{ url_for('config_page') }}" class="nav-link {% if request.endpoint == 'config_page' %}active{% endif %}" data-i18n="nav_config">設定</a></li>
                 <li><a href="{{ url_for('train_page') }}" class="nav-link {% if request.endpoint == 'train_page' %}active{% endif %}" data-i18n="nav_train">訓練</a></li>
